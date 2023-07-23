@@ -8,11 +8,20 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[macro_export]
+macro_rules! bench {
+    {$code:block} => {{
+        let _ins = std::time::Instant::now();
+        $code
+        _ins.elapsed()
+    }}
+}
+
 fn print_help() {
     println!("usage: lzw [c]ompress|[d]ecompress <in_file> <out_file>")
 }
 
-fn print_duration(duration: Duration) {
+pub fn print_duration(duration: Duration) {
     if duration.as_secs() > 0 {
         println!("Time: {:.1}s", duration.as_secs_f32());
     } else if duration.as_millis() > 0 {

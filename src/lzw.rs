@@ -1,21 +1,22 @@
-use std::{io::{Read, Result, Write}, thread, time::Duration};
+use std::io::{BufWriter, Read, Result, Write, BufReader};
 
 use crate::{
     bit_buffer::{read_one_byte, BitBufReader, BitBufWriter},
-    dict::{Code, Dict},
+    dict::{Byte, Code, Dict, State},
 };
 
-pub fn compress<T: Read, U: Write>(mut in_stream: T, out_stream: U) -> Result<()> {
+pub fn compress<T: Read, U: Write>(in_stream: T, out_stream: U) -> Result<()> {
+    let mut in_buf = BufReader::new(in_stream);
     let mut writer = BitBufWriter::new(out_stream);
-    let mut dict = Dict::new(false);
-    let mut last_code = Some(read_one_byte(&mut in_stream)? as Code);
-    let mut result = read_one_byte(&mut in_stream);
+    let mut dict = Dict::new(State::WRITE);
+    let mut last_code = Some(read_one_byte(&mut in_buf)?.into());
+    let mut result = read_one_byte(&mut in_buf);
 
     while let Ok(c) = result {
         match last_code {
             None => {
-                last_code = Some(c as Code);
-                result = read_one_byte(&mut in_stream);
+                last_code = Some(c.into());
+                result = read_one_byte(&mut in_buf);
             }
             Some(code) => match dict.find(code, c) {
                 None => {
@@ -25,7 +26,7 @@ pub fn compress<T: Read, U: Write>(mut in_stream: T, out_stream: U) -> Result<()
                 }
                 Some(inner_code) => {
                     last_code = Some(inner_code);
-                    result = read_one_byte(&mut in_stream);
+                    result = read_one_byte(&mut in_buf);
                 }
             },
         }
@@ -37,9 +38,8 @@ pub fn compress<T: Read, U: Write>(mut in_stream: T, out_stream: U) -> Result<()
     Ok(())
 }
 
-fn decode<T: Write>(dict: &Dict, stream: &mut T, code: Code) -> Result<u8> {
+fn decode<T: Write>(dict: &Dict, stream: &mut T, code: Code) -> Result<Byte> {
     let mut pattern = Vec::new();
-    // let i: usize = 0;
     let mut entry = dict.table.get(code as usize).unwrap();
 
     while let Some(pointer) = entry.0 {
@@ -55,30 +55,31 @@ fn decode<T: Write>(dict: &Dict, stream: &mut T, code: Code) -> Result<u8> {
     Ok(*pattern.get(0).unwrap())
 }
 
-pub fn decompress<T: Read, U: Write>(in_stream: T, mut out_stream: U) -> Result<()> {
+pub fn decompress<T: Read, U: Write>(in_stream: T, out_stream: U) -> Result<()> {
     let mut reader = BitBufReader::new(in_stream);
-    let mut dict = Dict::new(true);
+    let mut dict = Dict::new(State::READ);
     let mut result = reader.read(dict.width);
+    let mut out_buf = BufWriter::new(out_stream);
 
     if result.is_err() {
         return Ok(());
     }
 
-    let current_code = result.unwrap() as Code;
-    let mut c = decode(&dict, &mut out_stream, current_code)?;
+    let current_code = result.unwrap().try_into().unwrap();
+    let mut c = decode(&dict, &mut out_buf, current_code)?;
     let mut last_code = current_code;
     result = reader.read(dict.width);
 
     while let Ok(code) = result {
         if (code as usize) < dict.table.len() {
-            c = decode(&dict, &mut out_stream, code as Code)?;
+            c = decode(&dict, &mut out_buf, code.try_into().unwrap())?;
         } else if code as usize == dict.table.len() {
-            c = decode(&dict, &mut out_stream, last_code)?;
-            out_stream.write(&[c])?;
+            c = decode(&dict, &mut out_buf, last_code)?;
+            out_buf.write(&[c])?;
         }
-        
+
         dict.insert(last_code, c);
-        last_code = code as Code;
+        last_code = code.try_into().unwrap();
         result = reader.read(dict.width);
     }
 

@@ -1,4 +1,4 @@
-use std::io::{BufReader, BufWriter, Read, Result, Write, Error, ErrorKind};
+use std::io::{BufReader, BufWriter, Error, ErrorKind, Read, Result, Write};
 
 type BufData = u64;
 const BYTE_WIDTH: u8 = 8;
@@ -8,7 +8,10 @@ pub fn read_one_byte<T: Read>(stream: &mut T) -> Result<u8> {
     if stream.read(&mut value)? > 0 {
         Ok(value[0])
     } else {
-        Err(Error::new(ErrorKind::UnexpectedEof, "Reached the end of the file"))
+        Err(Error::new(
+            ErrorKind::UnexpectedEof,
+            "Reached the end of the file",
+        ))
     }
 }
 

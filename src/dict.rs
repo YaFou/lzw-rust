@@ -1,36 +1,44 @@
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 pub type Code = u32;
+pub type Byte = u8;
+type Width = u8;
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
-pub struct DictEntry(pub Option<Code>, pub u8);
+pub struct DictEntry(pub Option<Code>, pub Byte);
 const FIRST_CODE: Code = 256;
-const START_WIDTH: u8 = 9;
+const START_WIDTH: Width = 9;
+
+#[derive(PartialEq)]
+pub enum State {
+    WRITE,
+    READ,
+}
 
 pub struct Dict {
     pub table: Vec<DictEntry>,
     inversed_table: HashMap<DictEntry, Code>,
-    pub width: u8,
-    read: bool,
+    pub width: Width,
+    state: State,
 }
 
 impl Dict {
-    pub fn new(read: bool) -> Self {
+    pub fn new(state: State) -> Self {
         let mut data = Vec::new();
 
         for i in 0..FIRST_CODE {
-            data.push(DictEntry(None, i as u8))
+            data.push(DictEntry(None, i.try_into().unwrap()));
         }
 
         Dict {
             table: data,
             inversed_table: HashMap::new(),
             width: START_WIDTH,
-            read,
+            state,
         }
     }
 
-    pub fn find(&self, code: Code, byte: u8) -> Option<Code> {
+    pub fn find(&self, code: Code, byte: Byte) -> Option<Code> {
         let entry = DictEntry(Some(code), byte);
         match self.inversed_table.get(&entry) {
             None => None,
@@ -49,13 +57,16 @@ impl Dict {
         }
     }
 
-    pub fn insert(&mut self, code: Code, byte: u8) {
+    pub fn insert(&mut self, code: Code, byte: Byte) {
         let entry = DictEntry(Some(code), byte);
         self.table.push(entry);
-        self.inversed_table
-            .insert(entry, self.table.len() as Code - 1);
 
-        if (self.read && self.table.len() == (1 << self.width) - 2)
+        if self.state == State::WRITE {
+            self.inversed_table
+                .insert(entry, (self.table.len() - 1).try_into().unwrap());
+        }
+
+        if (self.state == State::READ && self.table.len() == (1 << self.width) - 2)
             || self.table.len() == (1 << self.width)
         {
             self.width += 1;
