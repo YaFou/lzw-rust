@@ -1,1 +1,4 @@
 /target
+/test/**
+!/test/t1.txt
+!/test/t2.txt
